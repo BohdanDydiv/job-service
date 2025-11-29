@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Developer Search</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="container">
+  <h1>Developer Knowledge Search</h1>
+
+  <!-- Search Box -->
+  <div class="search-area">
+    <input type="text" id="searchInput" placeholder="Type a keyword..." />
+    <button id="searchBtn">Search</button>
+  </div>
+
+  <!-- Dynamic Type Buttons -->
+  <div id="typeContainer" class="type-buttons"></div>
+
+  <hr />
+
+  <!-- Results -->
+  <div id="results" class="results"></div>
+  <div id="error" class="error-message" style="display:none;color:#b00020;margin-top:8px;"></div>
+</div>
+
+<script>
+let data = [];
+let selectedTypes = new Set();
+
+// Load JSON (relative file)
+const errorBox = document.getElementById('error');
+function showError(msg) {
+  console.error(msg);
+  errorBox.style.display = 'block';
+  errorBox.textContent = msg;
+}
+
+if (location.protocol === 'file:') {
+  // When opening an HTML file directly in the browser (file://), fetch will often fail due to CORS/file restrictions.
+  showError('Warning: opening via file:// prevents loading JSON. Run a local server (see README) or click "Run a Local Server" below.');
+} 
+
+function fetchData() {
+  // Show a temporary "loading" state
+  document.getElementById('results').innerHTML = '<p class="loading">Loading...</p>';
+
+  fetch('data.json')
+    .then(res => {
+      if (!res.ok) throw new Error('HTTP error ' + res.status);
+      return res.json();
+    })
+    .then(json => {
+      data = json;
+      renderTypeButtons();
+      // Show initial results (all items) after data loads
+      search();
+      errorBox.style.display = 'none';
+    })
+    .catch(err => {
+      showError('Failed to load data.json: ' + err.message);
+    });
+}
+
+fetchData();
+
+// Render language/type buttons dynamically
+function renderTypeButtons() {
+  const container = document.getElementById("typeContainer");
+  
+  const uniqueTypes = [...new Set(data.map(item => item.type))];
+
+  uniqueTypes.forEach(type => {
+    const btn = document.createElement("button");
+    btn.className = "type-btn";
+    btn.textContent = type;
+
+    btn.addEventListener("click", () => {
+      // Toggle selected button
+      if (selectedTypes.has(type)) {
+        selectedTypes.delete(type);
+        btn.classList.remove("active");
+      } else {
+        selectedTypes.add(type);
+        btn.classList.add("active");
+      }
+      // Re-run the search on type toggle so highlights/filters update immediately
+      search();
+    });
+
+    container.appendChild(btn);
+  });
+}
+
+// Search function - tokenized (one or more words)
+function search() {
+  const keyword = document.getElementById("searchInput").value.trim().toLowerCase();
+  const resultsBox = document.getElementById("results");
+  resultsBox.innerHTML = "";
+
+  // Split into tokens and require that every token is present in content (AND semantics)
+  const tokens = keyword.length ? keyword.split(/\s+/).filter(Boolean) : [];
+
+  const filtered = data.filter(item => {
+    const contentLower = item.content.toLowerCase();
+    const matchKeyword = tokens.length === 0 || tokens.every(t => contentLower.includes(t));
+    const matchType = selectedTypes.size === 0 || selectedTypes.has(item.type);
+    return matchKeyword && matchType;
+  });
+
+  if (filtered.length === 0) {
+    resultsBox.innerHTML = "<p class='no-results'>No matching results found.</p>";
+    return;
+  }
+
+  filtered.forEach(item => {
+    const p = document.createElement("p");
+    p.className = "result-item";
+    // Create nodes with highlighted keywords instead of setting plain text
+    p.appendChild(createHighlightNode(item.content, keyword));
+    resultsBox.appendChild(p);
+  });
+}
+
+// Button click → search
+document.getElementById("searchBtn").addEventListener("click", search);
+
+// ENTER key → search
+document.getElementById("searchInput").addEventListener("keydown", function(e) {
+  if (e.key === "Enter") search();
+});
+
+// Live search while typing for immediate feedback
+document.getElementById("searchInput").addEventListener("input", function(e) {
+  search();
+});
+
+// Utility function to safely escape regex chars in user input
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Create a DocumentFragment with highlighted matches for the given search (case-insensitive)
+function createHighlightNode(text, search) {
+  const frag = document.createDocumentFragment();
+  if (!search || !search.trim()) {
+    frag.appendChild(document.createTextNode(text));
+    return frag;
+  }
+
+  const tokens = search.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) {
+    frag.appendChild(document.createTextNode(text));
+    return frag;
+  }
+
+  const pattern = tokens.map(escapeRegExp).join('|');
+  const regex = new RegExp(pattern, 'gi');
+  let lastIndex = 0;
+  let m;
+  while ((m = regex.exec(text)) !== null) {
+    const start = m.index;
+    if (start > lastIndex) {
+      frag.appendChild(document.createTextNode(text.slice(lastIndex, start)));
+    }
+    const span = document.createElement('span');
+    span.className = 'highlight';
+    span.textContent = text.slice(start, regex.lastIndex);
+    frag.appendChild(span);
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+  }
+  return frag;
+}
+
+// Offer a simple fallback for users who opened file://
+// Add a small helper button to guide them starting a local server
+function createServerButton() {
+  const container = document.querySelector('.container');
+  const helpDiv = document.createElement('div');
+  helpDiv.style.marginTop = '8px';
+  helpDiv.style.fontSize = '0.9rem';
+
+  helpDiv.appendChild(btn);
+  container.appendChild(helpDiv);
+}
+
+createServerButton();
+</script>
+
+</body>
+</html>
